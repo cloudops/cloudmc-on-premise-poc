@@ -8,7 +8,7 @@
     mysql_group: mysql
   tasks:
     - name: Copy mount disk script
-      ansible.builtin.copy:
+      template:
         src: ./scripts/mysql_data.sh
         dest: /tmp/mysql_data.sh
         mode: '0755'
@@ -26,7 +26,7 @@
 
     - name: Ensure MySQL data directory ownership
       file:
-        path: "/data/mysql"
+        path: "{{ mysql_mount_point }}"
         owner: mysql
         group: mysql
         recurse: yes
