@@ -138,8 +138,6 @@
 
     - name: Disable swap immediately
       command: swapoff -a
-      args:
-        warn: false
 
     - name: Remove swap entries from /etc/fstab
       replace:
