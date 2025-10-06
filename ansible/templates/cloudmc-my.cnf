@@ -1,0 +1,9 @@
+[mysqld]
+bind-address = {{ mysql_bind_address }}
+max_connections = {{ mysql_max_connections }}
+
+datadir=/data/mysql
+
+default-time-zone='+0:00'
+sql-mode='NO_ENGINE_SUBSTITUTION'
+explicit_defaults_for_timestamp=0
