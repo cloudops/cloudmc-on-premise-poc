@@ -1,8 +1,8 @@
 #!/bin/bash
-if [ ! -d "/var/lib/elasticsearch/data" ]; then
-    sudo mkfs -t ext4 /dev/vdb
-    sudo mkdir -p /var/lib/elasticsearch/data
-    sudo mount /dev/vdb /var/lib/elasticsearch/data
-    #echo "/dev/vdb               /var/lib/elasticsearch/data                  ext4    defaults,nofail 0 2" | sudo tee -a /etc/fstab
+if [ ! -d "{{ elastic_mount_point }}/data" ]; then
+    sudo mkfs -t ext4 {{ elastic_data_disk }}
+    sudo mkdir -p {{ elastic_mount_point }}/data
+    sudo mount {{ elastic_data_disk }} {{ elastic_mount_point }}/data
+    #echo "{{ elastic_data_disk }}               {{ elastic_mount_point }}/data                  ext4    defaults,nofail 0 2" | sudo tee -a /etc/fstab
 fi
 touch /tmp/.mounted_by_elastic_data_script

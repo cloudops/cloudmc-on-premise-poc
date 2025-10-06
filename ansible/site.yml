@@ -27,8 +27,8 @@
     - name: Ensure MySQL data directory ownership
       file:
         path: "{{ mysql_mount_point }}"
-        owner: mysql
-        group: mysql
+        owner: "{{ mysql_user}}"
+        group: "{{ mysql_group}}"
         recurse: yes
 
     - name: Start and enable MySQL
@@ -62,9 +62,14 @@
 - hosts: elasticsearch
   become: yes
   become_method: sudo   
+  vars:
+    elastic_mount_point: /var/lib/elasticsearch
+    elastic_data_disk: /dev/vdb
+    elastic_user: elasticsearch
+    elastic_group: elasticsearch
   tasks:
     - name: Copy mount disk script
-      ansible.builtin.copy:
+      template:
         src: ./scripts/elastic_data.sh
         dest: /tmp/elastic_data.sh
         mode: '0755'
@@ -104,9 +109,9 @@
 
     - name: Ensure elastic searchdirectory ownership
       file:
-        path: "/var/lib/elasticsearch"
-        owner: elasticsearch
-        group: elasticsearch
+        path: "{{ elastic_mount_point }}"
+        owner: "{{ elastic_user }}"
+        group: "{{ elastic_group }}"
         recurse: yes
 
     - name: Start and enable Elasticsearch and Kibana
@@ -174,6 +179,14 @@
         creates: /etc/kubernetes/admin.conf
       register: kubeadm_init
 
+    - name: Ensure /root/.kube exists
+      file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+        
     - name: Copy kubeconfig for root
       copy:
         src: /etc/kubernetes/admin.conf
@@ -185,14 +198,14 @@
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
 
-    - name: Set join command fact
-      set_fact:
-        kube_join_command: "{{ kubeadm_init.stdout | regex_search('kubeadm join[\\s\\S]*', '\\0') }}"
-
+    - name: Get join command
+      shell: kubeadm token create --print-join-command
+      register: kube_join_command
+      
 
 - hosts: k8s_nodes
   become: yes
   become_method: sudo   
   tasks:
     - name: Join Kubernetes cluster
-      shell: "{{ hostvars[groups['k8s_controller'][0]].kube_join_command }}"
+      shell: "{{ hostvars[groups['k8s_controller'][0]].kube_join_command.stdout }}"
