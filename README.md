@@ -44,3 +44,15 @@ Usually the error will be: `Network is unreachable`
 
 - The VM has started, but the cloudinit / cloud-config has't finished executing, so SSH isn't ready yet.  This is impacted by the `package_upgrade: true` at the top of the `template/*.tpl` files.
 - Terraform is setting up the networking and public IPs too quickly, so the public IP didn't get setup correctly.  You need to **restart the VPC with `Clean Up` enabled**.  This will force the VR to set the configuration sequentially and fix the broken VR config.
+
+
+## Running Ansible
+
+
+```bash
+# Connect to the jump server
+ssh -i ./terraform.tfstate.d/default/id_rsa ${var.vm_username}@${cloudstack_ipaddress.jump_public_ip.ip_address}
+
+# Run ansible to deploy the software on each machine
+ansible-playbook site.yml -i inventory.ini 
+```

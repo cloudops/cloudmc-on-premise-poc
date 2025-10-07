@@ -201,6 +201,18 @@
     - name: Get join command
       shell: kubeadm token create --print-join-command
       register: kube_join_command
+
+    - name: Read kubeconfig from controller
+      slurp:
+        src: /etc/kubernetes/admin.conf
+      register: kubeconfig_data
+
+    - name: Write kubeconfig to local machine
+      delegate_to: localhost
+      copy:
+        content: "{{ kubeconfig_data.content | b64decode }}"
+        dest: "./kubeconfig"
+        mode: '0600'
       
 
 - hosts: k8s_nodes

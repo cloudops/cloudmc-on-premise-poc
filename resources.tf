@@ -100,7 +100,7 @@ resource "cloudstack_instance" "jump_instance" {
 
 resource "cloudstack_instance" "k8s_control_instance" {
   name             = "k8s-control-server-${count.index+1}"
-  service_offering = "M Instance"
+  service_offering = "L Instance"
   template         = "Ubuntu 24.04 (250123.1354)"
   network_id       = cloudstack_network.acs_public_network.id
   project          = var.cloudstack_project
@@ -311,7 +311,7 @@ resource "null_resource" "copy_inventory" {
 
 
 output "ansible_copy_command" {
-  value = "scp -i ./terraform.tfstate.d/default/id_rsa ansible -r ${var.vm_username}@${cloudstack_ipaddress.jump_public_ip.ip_address}:"
+  value = "scp -r -i ./terraform.tfstate.d/default/id_rsa ansible ${var.vm_username}@${cloudstack_ipaddress.jump_public_ip.ip_address}:"
 }
 
 output "jump_ssh_command" {
