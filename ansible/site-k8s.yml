@@ -1,0 +1,300 @@
+- name: Setup Mysql
+  hosts: mysql
+  become: yes
+  become_method: sudo   
+  vars:
+    mysql_mount_point: /var/lib/mysql
+    mysql_data_disk: /dev/vdb
+    mysql_user: mysql
+    mysql_group: mysql
+  tasks:
+    - name: Copy mount disk script
+      template:
+        src: ./scripts/mysql_data.sh
+        dest: /tmp/mysql_data.sh
+        mode: '0755'
+
+    - name: Execute mount disk script (only if marker absent)
+      ansible.builtin.command: /tmp/mysql_data.sh
+      args:
+        creates: /tmp/.mounted_by_mysql_data_script
+      
+    - name: Install MySQL
+      apt:
+        name: mysql-server
+        state: present
+        update_cache: yes
+
+    - name: Ensure MySQL data directory ownership
+      file:
+        path: "{{ mysql_mount_point }}"
+        owner: "{{ mysql_user}}"
+        group: "{{ mysql_group}}"
+        recurse: yes
+
+    - name: Start and enable MySQL
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Check if custom.cnf exists
+      ansible.builtin.stat:
+        path: /etc/mysql/mysql.conf.d/custom.cnf
+      register: custom_cnf_status
+
+    - name: Deploy custom MySQL config
+      vars:
+        mysql_bind_address: "0.0.0.0"
+        mysql_max_connections: 500
+      template:
+        src: ./templates/cloudmc-my.cnf
+        dest: /etc/mysql/mysql.conf.d/custom.cnf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Restart MySQL to apply config
+      service:
+        name: mysql
+        state: restarted
+      when: not custom_cnf_status.stat.exists
+
+- name: Create Database
+  hosts: mysql
+  become: yes
+  become_method: sudo   
+  vars:
+    db_user: cloudmc
+    db_password: cloudmc
+  tasks:
+    - name: Install pip3
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Install PyMySQL via apt
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Ensure database cloudmc exists
+      mysql_db:
+        name: "{{ item }}"
+        encoding: utf8mb4
+        collation: utf8mb4_0900_ai_ci
+        state: present
+        login_user: root
+        login_unix_socket: /var/run/mysqld/mysqld.sock        
+      loop:
+        - cloudmc
+        - cloudmc_content
+        - cloudmc_audit
+
+    - name: Ensure database user exists
+      mysql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        host: "10.0.1.%.%"
+        priv: "{{ item }}.*:ALL"
+        append_privs: yes
+        state: present
+        login_user: root
+        login_unix_socket: /var/run/mysqld/mysqld.sock        
+      loop:
+        - cloudmc
+        - cloudmc_content
+        - cloudmc_audit     
+
+
+- name: Setup Elastic + Kibana
+  hosts: elasticsearch
+  become: yes
+  become_method: sudo   
+  vars:
+    elastic_mount_point: /var/lib/elasticsearch
+    elastic_data_disk: /dev/vdb
+    elastic_user: elasticsearch
+    elastic_group: elasticsearch
+  tasks:
+    - name: Copy mount disk script
+      template:
+        src: ./scripts/elastic_data.sh
+        dest: /tmp/elastic_data.sh
+        mode: '0755'
+
+    - name: Execute mount disk script (only if marker absent)
+      ansible.builtin.command: /tmp/elastic_data.sh
+      args:
+        creates: /tmp/.mounted_by_elastic_data_script
+
+    - name: Install dependencies
+      apt:
+        name: apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Add Elasticsearch GPG key
+      ansible.builtin.apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        state: present
+
+    - name: Add Elasticsearch repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+        state: present
+        filename: elasticsearch
+
+    - name: Install Elasticsearch
+      apt:
+        name: elasticsearch
+        state: present
+        update_cache: yes
+
+    - name: Install Kibana
+      apt:
+        name: kibana
+        state: present
+
+    - name: Ensure elastic searchdirectory ownership
+      file:
+        path: "{{ elastic_mount_point }}"
+        owner: "{{ elastic_user }}"
+        group: "{{ elastic_group }}"
+        recurse: yes
+
+    - name: Start and enable Elasticsearch and Kibana
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - elasticsearch
+        - kibana
+
+- hosts: 
+    - k8s_controller
+    - k8s_nodes
+  become: yes
+  become_method: sudo   
+  tasks:
+    - name: Add Kubernetes apt key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Install dependencies
+      apt:
+        name: apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Disable swap immediately
+      command: swapoff -a
+
+    - name: Remove swap entries from /etc/fstab
+      replace:
+        path: /etc/fstab
+        regexp: '^\s*(.+\s+swap\s+.+)$'
+        replace: '# \1'
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Install kubeadm, kubelet, kubectl
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages
+      command: apt-mark hold kubelet kubeadm kubectl
+      become: yes
+#### To work now
+# sudo modprobe br_netfilter
+# sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+# sudo sysctl -w net.ipv4.ip_forward=1
+
+#### Make it permanent
+# at <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+# br_netfilter
+# EOF
+
+# cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+# net.bridge.bridge-nf-call-iptables=1
+# net.ipv4.ip_forward=1
+# EOF
+
+# sudo sysctl --system
+
+- hosts: k8s_controller
+  become: yes
+  become_method: sudo   
+  tasks:
+    - name: Initialize Kubernetes master
+      shell: kubeadm init --pod-network-cidr=10.244.0.0/16
+      args:
+        creates: /etc/kubernetes/admin.conf
+      register: kubeadm_init
+
+    - name: Ensure /root/.kube exists
+      file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+        
+    - name: Copy kubeconfig for root
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+
+    - name: Install Flannel network
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Get join command
+      shell: kubeadm token create --print-join-command
+      register: kube_join_command
+
+    - name: Read kubeconfig from controller
+      slurp:
+        src: /etc/kubernetes/admin.conf
+      register: kubeconfig_data
+
+    - name: Write kubeconfig to local machine
+      delegate_to: localhost
+      copy:
+        content: "{{ kubeconfig_data.content | b64decode }}"
+        dest: "./kubeconfig"
+        mode: '0600'
+
+      # Might need to add couple of kubectl restart.... weird.
+      #
+      
+
+- hosts: k8s_nodes
+  become: yes
+  become_method: sudo   
+  tasks:
+    - name: Join Kubernetes cluster
+      shell: "{{ hostvars[groups['k8s_controller'][0]].kube_join_command.stdout }}"
