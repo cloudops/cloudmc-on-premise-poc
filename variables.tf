@@ -18,6 +18,9 @@ variable "vm_username" {
 variable "elastic_count" {
     default = 1
 }
+variable "kibana_count" {
+    default = 1
+}
 variable "mysql_count" {
     default = 1
 }

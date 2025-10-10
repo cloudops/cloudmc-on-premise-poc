@@ -1,3 +1,41 @@
+- name: Install package locally on control node
+  hosts: localhost
+  become: yes
+  tasks:
+    - name: Add Kubernetes apt key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Install git
+      apt:
+        name: git
+        state: present
+        update_cache: yes
+
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: present
+        update_cache: yes
+
+    - name: Download Helm install script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get-helm-3
+        mode: '0755'
+
+    - name: Install Helm
+      command: >
+        /tmp/get-helm-3
+
 - name: Setup Mysql
   hosts: mysql
   become: yes
@@ -110,7 +148,7 @@
         - cloudmc_audit     
 
 
-- name: Setup Elastic + Kibana
+- name: Setup Elastic
   hosts: elasticsearch
   become: yes
   become_method: sudo   
@@ -154,11 +192,6 @@
         state: present
         update_cache: yes
 
-    - name: Install Kibana
-      apt:
-        name: kibana
-        state: present
-
     - name: Ensure elastic searchdirectory ownership
       file:
         path: "{{ elastic_mount_point }}"
@@ -166,14 +199,65 @@
         group: "{{ elastic_group }}"
         recurse: yes
 
-    - name: Start and enable Elasticsearch and Kibana
+    - name: Configure Elasticsearch for single-node and bind to private IP
+      blockinfile:
+        path: /etc/elasticsearch/elasticsearch.yml
+        block: |
+          network.host: {{ hostvars[groups['elasticsearch'][0]]['ansible_host'] }}
+          discovery.type: single-node
+          xpack.security.enabled: false
+
+    - name: Start and enable Elasticsearch
       service:
-        name: "{{ item }}"
+        name: "elasticsearch"
         state: started
         enabled: yes
-      loop:
-        - elasticsearch
-        - kibana
+
+- name: Install Kibana
+  hosts: kibana
+  become: yes
+  become_method: sudo   
+  tasks:
+    - name: Add Elasticsearch GPG key
+      apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        state: present
+
+    - name: Add Elasticsearch repo
+      apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+        state: present
+
+    - name: Install dependencies
+      apt:
+        name: apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Install Kibana
+      apt:
+        name: kibana
+        state: present
+
+    - name: Configure Kibana to connect to Elasticsearch
+      lineinfile:
+        path: /etc/kibana/kibana.yml
+        regexp: '^elasticsearch.hosts:'
+        line: "elasticsearch.hosts: ['http://{{ hostvars[groups['elasticsearch'][0]]['ansible_host'] }}:9200']"
+
+    - name: Configure Kibana to listen on network interface
+      blockinfile:
+        path: /etc/kibana/kibana.yml
+        block: |
+          server.host: "{{ hostvars[groups['kibana'][0]]['ansible_host'] }}"
+          server.port: 5601
+          elasticsearch.hosts: ["http://{{ hostvars[groups['elasticsearch'][0]]['ansible_host'] }}:9200"]
+
+    - name: Start and enable Kibana
+      service:
+        name: kibana
+        state: started
+        enabled: yes
 
 - hosts: 
     - k8s_controller
@@ -252,3 +336,26 @@
     - name: Print nodes
       debug:
         msg: "{{ node_status.stdout_lines }}"
+
+- name: Fetch K3s kubeconfig to local machine
+  hosts: k8s_controller
+  become: yes
+  tasks:
+    - name: Copy kubeconfig locally
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~/.kube/config
+        flat: yes
+        mode: '0644'
+
+- name: Update server IP in kubeconfig
+  hosts: localhost
+  vars:
+    controller_ip: 10.0.1.105   # replace with your controller's reachable IP
+  tasks:
+    - name: Replace server IP
+      replace:
+        path: ~/.kube/config
+        regexp: 'server: https://.*:6443'
+        replace: "server: https://{{ controller_ip }}:6443"
+

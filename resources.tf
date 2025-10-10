@@ -55,7 +55,7 @@ resource "cloudstack_network_acl_rule" "public_to_data_acl_rule" {
     action       = "allow"
     cidr_list    = ["10.0.1.0/24"]
     protocol     = "tcp"
-    ports        = ["22","3306"]
+    ports        = ["22","3306", "9200"]
     traffic_type = "ingress"
   }
 }
@@ -152,6 +152,26 @@ resource "cloudstack_instance" "elastic_instance" {
   # ensure that `terraform destroy` can clean up networks
   expunge = true
 }
+
+resource "cloudstack_instance" "kibana_instance" {
+  name             = "kibana-server-${count.index+1}"
+  service_offering = "M Instance"
+  template         = "Ubuntu 24.04 (250123.1354)"
+  network_id       = cloudstack_network.acs_public_network.id
+  project          = var.cloudstack_project
+  zone         	   = var.cloudstack_zone
+  root_disk_size   = 20
+	user_data        = templatefile("${path.module}/templates/elastic_config.tpl", {
+    public_key = replace(tls_private_key.ssh_key.public_key_openssh, "\n", "")
+    username   = var.vm_username
+    hostname   = "kibana-server-${count.index+1}"
+  })
+  count            = var.kibana_count
+
+  # ensure that `terraform destroy` can clean up networks
+  expunge = true
+}
+
 resource "cloudstack_instance" "mysql_instance" {
   name             = "mysql-server-${count.index+1}"
   service_offering = "MySql-instance"
@@ -208,6 +228,13 @@ resource "cloudstack_ipaddress" "k8s_public_ip" {
   zone       = var.cloudstack_zone
 }
 
+# setup public IPs and port forwards for SSH access
+resource "cloudstack_ipaddress" "kibana_public_ip" {
+  vpc_id     = cloudstack_vpc.cloudmc_vpc.id
+  project    = var.cloudstack_project
+  zone       = var.cloudstack_zone
+}
+
 
 # setup port forwards for SSH access
 resource "cloudstack_port_forward" "jump_ssh_pf" {
@@ -220,6 +247,18 @@ resource "cloudstack_port_forward" "jump_ssh_pf" {
     public_port        = 22
     virtual_machine_id = element(cloudstack_instance.jump_instance.*.id, 0)
   }
+}
+
+resource "cloudstack_loadbalancer_rule" "kibana_lbr_http" {
+  name          = "kibana-https-lbr"
+  ip_address_id = cloudstack_ipaddress.kibana_public_ip.id
+  project       = var.cloudstack_project
+  algorithm     = "leastconn"
+  private_port  = 5601
+  public_port   = 80
+  protocol      = "tcp"
+  member_ids    = cloudstack_instance.kibana_instance.*.id
+  network_id = cloudstack_network.acs_public_network.id
 }
 
 resource "cloudstack_loadbalancer_rule" "k8s_lbr_https" {
@@ -285,12 +324,15 @@ vm-1 ansible_host=${cloudstack_instance.mysql_instance[0].ip_address} ansible_us
 [elasticsearch]
 vm-2 ansible_host=${cloudstack_instance.elastic_instance[0].ip_address} ansible_user=${var.vm_username}
 
+[kibana]
+vm-3 ansible_host=${cloudstack_instance.kibana_instance[0].ip_address} ansible_user=${var.vm_username}
+
 [k8s_controller]
-vm-3 ansible_host=${cloudstack_instance.k8s_control_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-4 ansible_host=${cloudstack_instance.k8s_control_instance[0].ip_address} ansible_user=${var.vm_username}
 
 [k8s_nodes]
-vm-4 ansible_host=${cloudstack_instance.k8s_nodes_instance[0].ip_address} ansible_user=${var.vm_username}
-vm-5 ansible_host=${cloudstack_instance.k8s_nodes_instance[1].ip_address} ansible_user=${var.vm_username}
+vm-5 ansible_host=${cloudstack_instance.k8s_nodes_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-6 ansible_host=${cloudstack_instance.k8s_nodes_instance[1].ip_address} ansible_user=${var.vm_username}
 EOT
 }
 

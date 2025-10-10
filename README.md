@@ -54,5 +54,5 @@ Usually the error will be: `Network is unreachable`
 ssh -i ./terraform.tfstate.d/default/id_rsa ${var.vm_username}@${cloudstack_ipaddress.jump_public_ip.ip_address}
 
 # Run ansible to deploy the software on each machine
-ansible-playbook site.yml -i inventory.ini 
+ansible-playbook site-k3s.yml -i inventory.ini 
 ```
