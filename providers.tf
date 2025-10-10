@@ -5,6 +5,14 @@ terraform {
       version = "~> 0.5.0"
     }
   }
+  cloud {
+    organization = "CloudMC"
+
+    workspaces {
+      name = "cloudmc-on-prem-poc"
+    }
+  }
+
 }
 
 # Configure the CloudStack Provider
