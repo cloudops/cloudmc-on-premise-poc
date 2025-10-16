@@ -319,20 +319,20 @@ resource "null_resource" "jump_ssh_setup" {
 locals {
   inventory_ini = <<EOT
 [mysql]
-vm-1 ansible_host=${cloudstack_instance.mysql_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-1 ansible_host=${cloudstack_instance.mysql_instance[0].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.mysql_instance[0].name}
 
 [elasticsearch]
-vm-2 ansible_host=${cloudstack_instance.elastic_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-2 ansible_host=${cloudstack_instance.elastic_instance[0].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.elastic_instance[0].name}
 
 [kibana]
-vm-3 ansible_host=${cloudstack_instance.kibana_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-3 ansible_host=${cloudstack_instance.kibana_instance[0].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.kibana_instance[0].name}
 
 [k8s_controller]
-vm-4 ansible_host=${cloudstack_instance.k8s_control_instance[0].ip_address} ansible_user=${var.vm_username}
+vm-4 ansible_host=${cloudstack_instance.k8s_control_instance[0].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.k8s_control_instance[0].name}
 
 [k8s_nodes]
-vm-5 ansible_host=${cloudstack_instance.k8s_nodes_instance[0].ip_address} ansible_user=${var.vm_username}
-vm-6 ansible_host=${cloudstack_instance.k8s_nodes_instance[1].ip_address} ansible_user=${var.vm_username}
+vm-5 ansible_host=${cloudstack_instance.k8s_nodes_instance[0].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.k8s_nodes_instance[0].name}
+vm-6 ansible_host=${cloudstack_instance.k8s_nodes_instance[1].ip_address} ansible_user=${var.vm_username} ansible_hostname=${cloudstack_instance.k8s_nodes_instance[1].name}
 EOT
 }
 

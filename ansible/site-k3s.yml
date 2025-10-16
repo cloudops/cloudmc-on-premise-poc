@@ -36,6 +36,11 @@
       command: >
         /tmp/get-helm-3
 
+    - name: Install Java
+      apt:
+        name: openjdk-17-jre
+        state: present
+
 - name: Setup Mysql
   hosts: mysql
   become: yes
@@ -87,7 +92,7 @@
         mysql_max_connections: 500
       template:
         src: ./templates/cloudmc-my.cnf
-        dest: /etc/mysql/mysql.conf.d/custom.cnf
+        dest: /etc/mysql/mysql.conf.d/z-custom.cnf
         owner: root
         group: root
         mode: '0644'
@@ -136,7 +141,7 @@
       mysql_user:
         name: "{{ db_user }}"
         password: "{{ db_password }}"
-        host: "10.0.1.%.%"
+        host: "10.0.1.%"
         priv: "{{ item }}.*:ALL"
         append_privs: yes
         state: present
@@ -308,7 +313,10 @@
       set_fact:
         k3s_token: "{{ token_data.content | b64decode | trim }}"
         k3s_server_url: "https://{{ ansible_host }}:6443"
-      
+
+    - name: Set controller unschedulable
+      command: kubectl taint nodes {{ ansible_hostname }} node-role.kubernetes.io/master=true:NoSchedule --overwrite
+
 
 - hosts: k8s_nodes
   become: yes
