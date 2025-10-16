@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app.kubernetes.io/component: pricing-pipeline
+    app.kubernetes.io/instance: cloudmc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: cloudmc
+    helm.sh/chart: cloudmc-9.24.2
+  name: cloudmc-pricing-pipeline
+  namespace: cloudmc
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: cloudmc
+      app.kubernetes.io/component: pricing-pipeline
+  serviceName: cloudmc-pricing-pipeline-headless
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/cloudmc.check_names: '["cloudmc"]'
+        ad.datadoghq.com/cloudmc.conf: '[{"host": "%%host%%","port":"9999"}]'
+        ad.datadoghq.com/cloudmc.init_configs: |
+          [
+            {
+              "is_jmx": true,
+              "collect_default_metrics": true,
+              "conf": [
+                {
+                  "include": {
+                    "domain": "com.zaxxer.hikari",
+                    "bean_regex": [
+                        "com\\.zaxxer\\.hikari:type=Pool \\((.*)\\)"
+                    ],
+                    "tags": {
+                      "poolName": "$1"
+                    },
+                    "attribute": {
+                      "ActiveConnections": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.connectionpool.used"
+                      },
+                      "IdleConnections": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.connectionpool.idle"
+                      },
+                      "ThreadsAwaitingConnection": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.connectionpool.awaiting"
+                      },
+                      "TotalConnections": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.connectionpool.total"
+                      }
+                    }
+                  }
+                },
+                {
+                  "include": {
+                    "domain": "com.cloudops.mc",
+                    "bean_regex": [
+                        "com\\.cloudops\\.mc:type=Scheduler,name=(.*)"
+                    ],
+                    "tags": {
+                      "poolName": "$1"
+                    },
+                    "attribute": {
+                      "RunningJobCount": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.cloudmc.scheduler.job.running"
+                      },
+                      "ScheduledJobCount": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.cloudmc.scheduler.job.scheduled"
+                      },
+                      "ThreadPoolSize": {
+                        "metric_type": "gauge",
+                        "alias": "jmx.cloudmc.scheduler.pool.size"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        ad.datadoghq.com/cloudmc.instances: '[{"host": "%%host%%","port":"9999"}]'
+        restartAllDate: "2024-11-26 00:00:00"
+        restartDate: "2024-11-26 00:00:00"
+      creationTimestamp: null
+      labels:
+        app: cloudmc
+        app.kubernetes.io/component: pricing-pipeline
+        app.kubernetes.io/instance: cloudmc
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: cloudmc
+        helm.sh/chart: cloudmc-9.24.2
+        redis-client: "true"
+    spec:
+      containers:
+      - env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: JMX_PARAMS
+          value: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false
+            -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=false
+            -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.rmi.port=9999
+            -Djava.rmi.server.hostname=$(POD_IP)
+        - name: CLOUDMC_LOGS_LEVEL
+          value: trace
+        - name: KAFKA_KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: userKey
+              name: cloudmc-onprem
+        - name: KAFKA_KEYSTORE_PASSWORD
+          value: changeit
+        - name: HEAP_DEBUG
+          value: "true"
+        - name: CLOUDMC_CLUSTER_NAME
+          value: onprem
+        - name: JVM_MIN_HEAP
+          value: 800m
+        - name: JVM_MAX_HEAP
+          value: 1024m
+        - name: JVM_OPTIONS
+          value: -Dlog4j2.formatMsgNoLookups=true -Dcloudmc.mode=pricing_pipeline
+        image: us-docker.pkg.dev/cloudmc-saas-shared/docker-images/cloudops/cloudmc:cloudmc-onprem
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /rest/actuator/liveness
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 210
+          periodSeconds: 20
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: cloudmc
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /rest/actuator/liveness
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 1500m
+            ephemeral-storage: 4G
+            memory: 2G
+          requests:
+            cpu: 500m
+            ephemeral-storage: 2G
+            memory: 2G
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/cloudmc/config
+          name: cmc-app-props
+        - mountPath: /opt/cloudmc/kafka
+          name: kafka-mount
+          readOnly: true
+        - mountPath: /opt/cloudmc/heapdump
+          name: heapdump
+        - mountPath: /opt/cloudmc/kafka-streams
+          name: kafka-state-store
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+      - name: docker-hub
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 120
+      topologySpreadConstraints:
+      - labelSelector:
+          matchLabels:
+            app: cloudmc
+        maxSkew: 1
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+      volumes:
+      - hostPath:
+          path: /tmp
+          type: Directory
+        name: heapdump
+      - configMap:
+          defaultMode: 420
+          name: cloudmc
+        name: cmc-app-props
+      - name: kafka-mount
+        secret:
+          defaultMode: 420
+          items:
+          - key: caCrt
+            path: ca.crt
+          - key: userP12
+            path: user.p12
+          secretName: cloudmc-onprem
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      name: kafka-state-store
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: cloudstack-custom
+      volumeMode: Filesystem

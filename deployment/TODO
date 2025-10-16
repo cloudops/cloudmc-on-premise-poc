@@ -1,0 +1,27 @@
+Things to do
+
+- maintenance server pages customization, not use GCP
+- Duplicate check method to remove
+- Remove datadog if not enabled annotations.
+- topologyKey: failure-domain.beta.kubernetes.io/zone depreacated
+- ingress root folder /* should be / (not for GCP)
+- ingress add support for custom annotations (class is default to nginx but could be traefik)
+- ingress redirection http to https
+- Acme solver with DNS instead of http (not working on private network)
+- internal port(gateway) I1015 01:51:39.539888    1585 warnings.go:110] "Warning: spec.template.spec.containers[1].ports[1]: duplicate port definition with spec.template.spec.containers[1].ports[0]"
+- Statefulset class of storage cannot be changed
+- 6.0.4-debian-10-r0 does not exists anymore (moved to bitnamilegacy)
+- Missing network policy rules for redis
+- Network Policy ingress must be allow for the web.....
+
+
+Version of redis is not move from bitami to bitnamilegacy
+  - name: redis-cluster
+    version: 3.1.10
+    repository: https://raw.githubusercontent.com/bitnami/charts/archive-full-index/bitnami
+    condition: redis-cluster.enabled
+
+  - name: redis
+    version: 10.6.17
+    repository: https://raw.githubusercontent.com/bitnami/charts/archive-full-index/bitnami
+    condition: redis.enabled

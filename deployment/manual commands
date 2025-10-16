@@ -1,0 +1,142 @@
+
+kubectl create secret generic \
+  --namespace kube-system \
+  --from-file ./cloud-config \
+  cloudstack-secret
+
+
+kubectl apply -f https://github.com/leaseweb/cloudstack-csi-driver/releases/download/v0.10.0/manifest.yaml
+
+kubectl apply -f storage-class.yaml
+
+kubectl create namespace cert-manager
+kubectl create namespace helmet
+kubectl create namespace cmc-kafka
+kubectl create namespace cloudmc
+
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+// helm upgrade -i \
+//     -n cert-manager \
+//     cert-manager jetstack/cert-manager \
+//     --version v1.13.3 \
+//     --set installCRDs=true 
+//     -f ./deployments/common/values.cert-manager.yaml \
+
+helm upgrade -i \
+    -n cert-manager \
+    cert-manager jetstack/cert-manager \
+    --version v1.13.3 \
+    --set installCRDs=true 
+
+
+kubectl apply -n cloudmc -f certificate.issuer.yaml
+kubectl apply -n cmc-kafka -f certificate.issuer.yaml
+kubectl apply -n cmc-kafka -f clouddns-dns01-solver-svc-acct.yaml
+
+cat gar.txt | base64 | helm registry login -u _json_key_base64 --password-stdin https://us-docker.pkg.dev
+helm upgrade -i \
+    -n helmet \
+    helmet oci://us-docker.pkg.dev/cloudmc-saas-shared/helm-internal/helmet \
+    --version 1.11.1 \
+    -f values.helmet.yaml
+
+
+wget https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.45.0/strimzi-0.45.0.tar.gz
+tar -xzf strimzi-0.45.0.tar.gz
+kubectl apply -f strimzi-0.45.0/install/strimzi-admin
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/04A-Crd-kafkanodepool.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/040-Crd-kafka.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/041-Crd-kafkaconnect.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/042-Crd-strimzipodset.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/043-Crd-kafkatopic.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/044-Crd-kafkauser.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/045-Crd-kafkamirrormaker.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/046-Crd-kafkabridge.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/047-Crd-kafkaconnector.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/048-Crd-kafkamirrormaker2.yaml
+kubectl apply -f strimzi-0.45.0/install/cluster-operator/049-Crd-kafkarebalance.yaml
+rm -r strimzi-0.45.0*
+
+helm repo add strimzi https://strimzi.io/charts
+helm repo update
+
+helm upgrade -i \
+    -n cmc-kafka \
+    --version 0.45.0 \
+    -f values.kafka.yaml \
+    kafka-operator strimzi/strimzi-kafka-operator
+
+kubectl apply -f kafka.cluster.yaml --namespace=cmc-kafka
+kubectl apply -f kafka.user.yaml --namespace=cmc-kafka
+
+## Need to wait for secrets (cmc-cluster-cluster-ca-cert, cloudmc-onprem)
+
+
+export KAFKA_CA=`kubectl get secret cmc-cluster-cluster-ca-cert -n cmc-kafka -o jsonpath="{.data.ca\.crt}"`
+export KAFKA_USER_KEY=`kubectl get secret cloudmc-onprem -n cmc-kafka -o jsonpath="{.data.user\.password}"`
+export KAFKA_USER_P12=`kubectl get secret cloudmc-onprem -n cmc-kafka -o jsonpath="{.data.user\.p12}"`
+
+echo "apiVersion: v1 
+kind: Secret 
+metadata: 
+    name: cloudmc-onprem 
+    namespace: cloudmc 
+type: Opaque 
+data: 
+    caCrt: $KAFKA_CA 
+    userKey: $KAFKA_USER_KEY 
+    userP12: $KAFKA_USER_P12" | kubectl apply -f -
+
+
+kubectl apply -f akhq.user.yaml --namespace=cmc-kafka
+kubectl apply -f akhq_issuer.yaml --namespace=cmc-kafka
+
+## Need to wait for secrets (akhq-operator)
+export AKHQ_CA=`kubectl get secret cmc-cluster-cluster-ca-cert -n cmc-kafka -o jsonpath="{.data.ca\.crt}"`
+export AKHQ_USER_KEY=`kubectl get secret akhq-operator -n cmc-kafka -o jsonpath="{.data.user\.password}"| base64 -d`
+export AKHQ_USER_P12=`kubectl get secret akhq-operator -n cmc-kafka -o jsonpath="{.data.user\.p12}"`
+
+echo "${AKHQ_CA}" | base64 -d  > ca.crt
+echo "${AKHQ_USER_P12}" | base64 -d > user.p12
+keytool -keystore truststore.jks -alias CARoot -import -file ca.crt -storepass ${AKHQ_USER_KEY} -trustcacerts -noprompt
+keytool -importkeystore -srckeystore user.p12 -srcstorepass ${AKHQ_USER_KEY} -srcstoretype pkcs12 -destkeystore keystore.jks -deststoretype pkcs12 -deststorepass ${AKHQ_USER_KEY}
+
+export TRUST_FILE=`cat truststore.jks| base64 -w 0`
+export KEYSTORE_FILE=`cat keystore.jks| base64 -w 0`
+echo "apiVersion: v1
+kind: Secret
+metadata:
+    name: akhq-kafka-certs
+    namespace: cmc-kafka
+type: Opaque
+data:
+    keystore: ${KEYSTORE_FILE}
+    truststore: ${TRUST_FILE}" | kubectl apply -f -
+
+kubectl apply -f akhq_imagepull.yaml 
+
+helm repo add akhq https://akhq.io/
+helm repo update
+
+### Need to update the values file with the sensitive values
+helm upgrade --install akhq akhq/akhq --version 0.26.0 -f akhq.values.yaml -n cmc-kafka 
+
+
+
+kubectl describe crd/snapshotschedules.snapscheduler.backube | grep 'controller-gen.kubebuilder.io/version: v0.13.0
+if (crdResult == 1) {
+wget https://raw.githubusercontent.com/backube/snapscheduler/v3.3.0/config/crd/bases/snapscheduler.backube_snapshotschedules.yaml
+kubectl apply -f snapscheduler.backube_snapshotschedules.yaml
+kubectl label crd/snapshotschedules.snapscheduler.backube app.kubernetes.io/managed-by=Helm
+kubectl annotate crd/snapshotschedules.snapscheduler.backube meta.helm.sh/release-name=cloudmc
+kubectl annotate crd/snapshotschedules.snapscheduler.backube meta.helm.sh/release-namespace=cloudmc
+                    
+
+helm upgrade -i \
+    -n cloudmc \
+    cloudmc oci://us-docker.pkg.dev/cloudmc-saas-shared/helm-internal/cloudmc \
+    --version  9.24.2 \
+    -f values.cloudmc.yaml
+

@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    meta.helm.sh/release-name: cloudmc
+    meta.helm.sh/release-namespace: cloudmc
+  creationTimestamp: "2025-10-15T00:59:14Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/instance: cloudmc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: cloudmc
+    helm.sh/chart: cloudmc-9.24.2
+  name: allow-cloudmc
+  namespace: cloudmc
+  resourceVersion: "451185"
+  uid: ea59b2e9-5618-4521-a400-946834ca704f
+spec:
+  egress:
+  - {}
+  ingress:
+  - {}
+  podSelector:
+    matchLabels:
+      app: cloudmc
+  policyTypes:
+  - Ingress
+  - Egress

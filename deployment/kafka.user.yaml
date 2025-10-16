@@ -1,0 +1,46 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: cloudmc-onprem
+  labels:
+    strimzi.io/cluster: cmc-cluster
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      - operation: Read
+        resource:
+          name: onprem
+          patternType: prefix
+          type: topic
+      - operation: Read
+        resource:
+          name: onprem
+          patternType: prefix
+          type: group
+      - operation: Write
+        resource:
+          name: onprem
+          patternType: prefix
+          type: topic
+      - operation: Create
+        resource:
+          name: onprem
+          patternType: prefix
+          type: topic
+      - operation: Write
+        resource:
+          name: onprem
+          patternType: prefix
+          type: transactionalId
+      - operation: IdempotentWrite
+        resource:
+          name: cmc-cluster
+          type: cluster
+      - operation: Delete
+        resource:
+          name: onprem
+          patternType: prefix
+          type: topic

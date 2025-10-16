@@ -1,0 +1,23 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: akhq-issuer
+  namespace: cmc-kafka
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: cloudmc@cloudops.com
+    preferredChain: ""
+    privateKeySecretRef:
+      name: cert-issuer-account-key
+    solvers:
+    # - http01:
+    #    ingress:
+    #      class: traefik
+    solvers:
+    - dns01:
+        cloudDNS:
+          project: dev-tools-233220
+          serviceAccountSecretRef:
+            key: key.json
+            name: clouddns-dns01-solver-svc-acct         

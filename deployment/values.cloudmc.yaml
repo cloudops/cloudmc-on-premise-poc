@@ -1,0 +1,153 @@
+
+annotations: 
+  restartAllDate: "2024-11-26 00:00:00" # restart all deployments
+saasHost: cloudmc.onprem.cloudops-devteam.com
+resellerHosts:
+
+snapshotsEnabled: true
+kafkaSnapshotsEnabled: true
+kafkaNamespace: cmc-kafka
+snapscheduler:
+  install: true
+  imagePullSecrets:
+    - name: docker-hub
+
+
+maintenance: false
+downtimeEndpoint: https://storage.googleapis.com/cloudmc-static/downtime.html
+
+certManager:
+  acmeEmail: cloudmc@cloudops.com
+
+registry:
+  username: <user>
+  password: <pasword>
+
+cloudmc:
+  annotations:
+    restartDate: "2024-12-06 19:00:00"
+  heapdebug: true
+  maxHeap: 1024m
+  minHeap: 800m
+  clusterName: onprem
+  enabled: true
+  tag: cloudmc-onprem
+  replicas: 1
+  db:
+    user: cloudmc
+    password: cloudmc
+    hosts: 10.0.2.193
+  redis:
+    port: 6379
+    cluster:
+      enabled: false
+    ssl_enabled: false
+    use_password: false
+  elasticsearch:
+    uris: http://10.0.2.125:9200
+    username: elastic
+    password: changeme
+    read_timeout: 31000
+  gateway:
+    enabled: false
+  resources:
+    requests:
+      memory: 2G
+      cpu: 0.5
+      ephemeral-storage: 1G
+    limits:
+      memory: 2G
+      cpu: 1.5
+      ephemeral-storage: 2G
+#  logstashUrl: logstash-beats-input.logging.svc.cluster.local:5052
+  logsLevel: trace
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: failure-domain.beta.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+      matchLabels:
+        app: cloudmc
+  kafka:
+    enabled: true
+    user: cloudmc-onprem
+    bootstrapserver: cmc-cluster-kafka-bootstrap.cmc-kafka.svc.cluster.local:9093
+    keystorespwd: changeit
+  pricing:
+    internal:
+      apis: true
+    v1:
+      enabled: false
+  internal:
+    enabled: false
+    port: 8081
+  usage:
+    duplicate_check:
+      enabled: false
+
+cloudmcjobs:
+  annotations:
+    restartDate: "2024-11-26 00:00:00"
+  heapdebug: true
+  maxHeap: 1024m
+  minHeap: 1024m
+  resources:
+    requests:
+      memory: 2G
+      cpu: 0.5
+      ephemeral-storage: 2G
+    limits:
+      memory: 2G
+      cpu: 1
+      ephemeral-storage: 4G
+
+cloudmcPipeline:
+  annotations:
+    restartDate: "2024-11-26 00:00:00"
+  heapdebug: true
+  disabled: false
+  replicas: 1
+  maxHeap: 1024m
+  minHeap: 800m
+  resources:
+    requests:
+      memory: 2G
+      cpu: 0.5
+      ephemeral-storage: 2G
+    limits:
+      memory: 2G
+      cpu: 1.5
+      ephemeral-storage: 4G
+  statefulset:
+    enabled: true
+
+gke:
+  enabled: false
+
+mysql:
+  enabled: false
+
+redis-cluster:
+  enabled: false
+
+redis:
+  enabled: true
+  usePassword: false
+  password: redisPassword
+  image:
+    pullSecrets:
+      - docker-hub
+#  global:
+#    storageClass: cloudstack-custom
+
+apm:
+  enabled: false
+
+maintenancePage:
+  nginxReplicas: 1
+#  bucket: cmc-maintenance-pages-dev
+
+
+properties:
+  keyList: <key list>
+  activeKey: 1

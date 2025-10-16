@@ -1,0 +1,48 @@
+cloudops@jump-server:~$ cat mc-ingress.yaml 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/issuer: cloudmc-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    meta.helm.sh/release-name: cloudmc
+    meta.helm.sh/release-namespace: cloudmc
+  creationTimestamp: "2025-10-15T00:59:14Z"
+  generation: 1
+  labels:
+    app: cloudmc
+    app.kubernetes.io/instance: cloudmc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: cloudmc
+    helm.sh/chart: cloudmc-9.24.2
+  name: cloudmc
+  namespace: cloudmc
+spec:
+  ingressClassName: traefik
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: maintenance-file-server
+            port:
+              number: 80
+        path: /
+        pathType: ImplementationSpecific
+  - host: cloudmc.onprem.cloudops-devteam.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: cloudmc
+            port:
+              number: 8080
+        path: /
+        pathType: ImplementationSpecific
+  tls:
+  - hosts:
+    - cloudmc.onprem.cloudops-devteam.com
+    secretName: cloudmc.onprem.cloudops-devteam.com-tls
+status:
+  loadBalancer: {}

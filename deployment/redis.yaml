@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: redis
+    app.kubernetes.io/managed-by: Helm
+    chart: redis-10.6.17
+    heritage: Helm
+    release: cloudmc
+  name: cloudmc-redis-master
+  namespace: cloudmc
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: redis
+      release: cloudmc
+      role: master
+  serviceName: cloudmc-redis-headless
+  template:
+    metadata:
+      annotations:
+        checksum/configmap: 81bc2decc9c45c7116850a83f8a1b02292e62e4907a695ec5cb84c47e0a0ba9e
+        checksum/health: 5c6222e91583dfcfc60337d2bb05051d3ef0c41817f705ded53f31b98d38017a
+        checksum/secret: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      creationTimestamp: null
+      labels:
+        app: redis
+        chart: redis-10.6.17
+        release: cloudmc
+        role: master
+    spec:
+      containers:
+      - command:
+        - /bin/bash
+        - -c
+        - |
+          if [[ -n $REDIS_PASSWORD_FILE ]]; then
+            password_aux=`cat ${REDIS_PASSWORD_FILE}`
+            export REDIS_PASSWORD=$password_aux
+          fi
+          if [[ ! -f /opt/bitnami/redis/etc/master.conf ]];then
+            cp /opt/bitnami/redis/mounted-etc/master.conf /opt/bitnami/redis/etc/master.conf
+          fi
+          if [[ ! -f /opt/bitnami/redis/etc/redis.conf ]];then
+            cp /opt/bitnami/redis/mounted-etc/redis.conf /opt/bitnami/redis/etc/redis.conf
+          fi
+          ARGS=("--port" "${REDIS_PORT}")
+          ARGS+=("--protected-mode" "no")
+          ARGS+=("--include" "/opt/bitnami/redis/etc/redis.conf")
+          ARGS+=("--include" "/opt/bitnami/redis/etc/master.conf")
+          /run.sh ${ARGS[@]}
+        env:
+        - name: REDIS_REPLICATION_MODE
+          value: master
+        - name: ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        - name: REDIS_PORT
+          value: "6379"
+        image: us-docker.pkg.dev/cloudmc-saas-shared/docker-images/bitnamilegacy/redis:6.0.4
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - /health/ping_liveness_local.sh 5
+          failureThreshold: 5
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: redis
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - /health/ping_readiness_local.sh 5
+          failureThreshold: 5
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        securityContext:
+          runAsUser: 1001
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /health
+          name: health
+        - mountPath: /data
+          name: redis-data
+        - mountPath: /opt/bitnami/redis/mounted-etc
+          name: config
+        - mountPath: /opt/bitnami/redis/etc/
+          name: redis-tmp-conf
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+      - name: cloudops-docker-repo
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1001
+      serviceAccount: default
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 493
+          name: cloudmc-redis-health
+        name: health
+      - configMap:
+          defaultMode: 420
+          name: cloudmc-redis
+        name: config
+      - emptyDir: {}
+        name: redis-tmp-conf
+  updateStrategy:
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: redis
+        component: master
+        heritage: Helm
+        release: cloudmc
+      name: redis-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 8Gi
+      volumeMode: Filesystem

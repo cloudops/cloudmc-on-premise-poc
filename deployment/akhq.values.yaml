@@ -1,0 +1,153 @@
+## installation/env
+image:
+  repository: us-docker.pkg.dev/cloudmc-saas-shared/docker-images/tchiotludo/akhq
+
+imagePullSecrets: 
+  - name: cloudops-docker-repo
+
+ingress:
+  enabled: true
+  ingressClassName: "traefik"
+  annotations:
+    cert-manager.io/issuer: akhq-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  paths:
+    - /
+  hosts:
+    - akhq-console.onprem.cloudops-devteam.com
+  tls:
+    - secretName: akhq-console.onprem.cloudops-devteam.com-tls
+      hosts:
+        - akhq-console.onprem.cloudops-devteam.com
+#### template
+extraEnv: []
+extraVolumeMounts:
+  - mountPath: /app/certs
+    name: certs
+extraVolumes:
+  - name: certs
+    secret:
+      items:
+        - key: keystore
+          path: keystore.jks
+        - key: truststore
+          path: truststore.jks
+      secretName: akhq-kafka-certs
+initContainers: {}
+nodeSelector: {}
+configuration:
+  micronaut:
+    server:
+      host-resolution:
+        host-header: Host
+        protocol-header: X-Forwarded-Proto
+livenessProbe:
+  initialDelaySeconds: 30
+  timeoutSeconds: 10
+readinessProbe:
+  initialDelaySeconds: 30
+  timeoutSeconds: 10
+resources:
+  limits:
+    cpu: 1
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+replicaCount: 1
+secrets:
+  akhq:
+    connections:
+      cloudmc-kafka:
+        properties:
+          bootstrap.servers: "cmc-cluster-kafka-bootstrap.cmc-kafka.svc.cluster.local:9093"
+          security.protocol: SSL
+          ssl.truststore.location: /app/certs/truststore.jks
+          ssl.truststore.password: <password>
+          ssl.keystore.type: "PKCS12"
+          ssl.keystore.location: /app/certs/keystore.jks
+          ssl.keystore.password: <password>
+          ssl.key.password: <password>
+securityContext: {}
+service:
+  enabled: true
+  port: 80
+  type: ClusterIP
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: akhq
+            app.kubernetes.io/name: akhq
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+      weight: 100
+### secret
+configuration: 
+  akhq:
+    security:
+      default-group: no-roles
+      roles:
+        all-reader:
+          - resources: ["TOPIC", "TOPIC_DATA", "NODE", "CONSUMER_GROUP"]
+            actions: ["READ"]
+          - resources: ["TOPIC"]
+            actions: ["READ_CONFIG"]
+      groups:
+        all-reader:
+          - role: all-reader
+      oidc:
+        enabled: true
+        providers:
+          google:
+            label: "Login with Google"
+            username-field: email
+            default-group: all-reader
+            users:
+              - username: "fgarcia@cloudops.com"
+                groups:
+                  - admin
+              - username: "alavoie@cloudops.com"
+                groups:
+                  - admin
+              - username: "jplourde@cloudops.com"
+                groups:
+                  - admin
+              - username: "magharkar@cloudops.com"
+                groups:
+                  - admin
+              - username: "sgodard@cloudops.com"
+                groups:
+                  - admin
+              - username: "pspensieri@cloudops.com"
+                groups:
+                  - admin
+              - username: "timothy.forsyth@aptum.com"
+                groups:
+                  - admin
+              - username: "vrajendran@cloudops.com"
+                groups:
+                  - admin
+              - username: "lniemann@cloudops.com"
+                groups:
+                  - admin
+  micronaut:
+    security:
+      enabled: true
+      oauth2:
+        enabled: true
+        clients:
+          google:
+            client-id: <client-id>
+            client-secret: <client-secret>
+            openid:
+              issuer: "https://accounts.google.com"
+      token:
+        jwt:
+          signatures:
+            secret:
+              generator:
+                secret: <secret>

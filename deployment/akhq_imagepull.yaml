@@ -1,0 +1,8 @@
+apiVersion: v1
+metadata:
+  name: cloudops-docker-repo
+  namespace: cmc-kafka
+kind: Secret
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: <value>

@@ -1,0 +1,8 @@
+[Global]
+api-url = <url>
+api-key = <key
+secret-key = <secret key>
+ssl-no-verify = true
+project-id = <project>
+zone = TOR-20P
+

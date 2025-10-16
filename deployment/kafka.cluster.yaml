@@ -1,0 +1,139 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: cmc-cluster
+spec:
+  kafka:
+    version: 3.9.0 # ensure the version is compatible with the strimzi operator version
+    replicas: 3
+    listeners:
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls
+      - name: kafkacli
+        port: 9099
+        type: internal
+        tls: false
+        authentication:
+          type: scram-sha-512
+    config:
+      auto.create.topics.enable: "false"
+      group.initial.rebalance.delay.ms: 3000
+      message.max.bytes: 1572864
+      replica.fetch.max.bytes: 1572864
+      inter.broker.protocol.version: "3.8"
+    template:
+      pod:
+        metadata:
+          annotations:
+            co.elastic.logs/module: kafka
+            co.elastic.logs/fileset: log
+            ad.datadoghq.com/kafka.check_names: '["kafka"]'
+            ad.datadoghq.com/kafka.init_configs: '[{"is_jmx": true, "collect_default_metrics": true}]'
+            ad.datadoghq.com/kafka.instances: '[{"host": "%%host%%","port":"9999"}]'
+            ad.datadoghq.com/kafka.logs: '[{"source":"kafka","service":"kafka"}]'
+            forceRefreshDate: '2022-12-15 19:25:00'
+        tolerations:
+          - key: workload
+            operator: Equal
+            value: kafka
+            effect: NoSchedule
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: cmc-cluster
+                    strimzi.io/name: cmc-cluster-kafka
+                topologyKey: failure-domain.beta.kubernetes.io/zone
+              weight: 100
+          # nodeAffinity:
+          #   requiredDuringSchedulingIgnoredDuringExecution:
+          #     nodeSelectorTerms:
+          #       - matchExpressions:
+          #         - key: workload
+          #           operator: In
+          #           values:
+          #           - kafka
+    authorization:
+      type: simple
+    storage:
+      type: jbod
+      volumes:
+        - deleteClaim: false
+          id: 0
+          size: 80Gi
+          type: persistent-claim
+          class: cloudstack-custom
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2Gi
+#        memory: 6Gi
+      requests:
+        cpu: "500m"
+        memory: 2Gi
+#        memory: 4Gi
+    jmxOptions: {}
+  clusterCa:
+    renewalDays: 5
+    validityDays: 365
+  clientsCa:
+    renewalDays: 5
+    validityDays: 365
+  zookeeper:
+    replicas: 3
+    storage:
+      type: persistent-claim
+      size: 8Gi
+      deleteClaim: false
+      class: cloudstack-custom
+    resources:
+      requests:
+        cpu: "500m"
+        memory: 1Gi
+#        memory: 2Gi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+#        memory: 2Gi
+    template:
+      pod:
+        metadata:
+          annotations:
+            co.elastic.logs/module: zookeeper
+            co.elastic.logs/fileset: log
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: cmc-cluster
+                    strimzi.io/name: cmc-cluster-zookeeper
+                topologyKey: failure-domain.beta.kubernetes.io/zone
+              weight: 100
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+  kafkaExporter:
+    topicRegex: "onprem-.*"
+    groupRegex: "onprem-.*"
+    template:
+      pod:
+        metadata:
+          annotations:
+            ad.datadoghq.com/cmc-cluster-kafka-exporter.check_names: '["openmetrics"]'
+            ad.datadoghq.com/cmc-cluster-kafka-exporter.init_configs: '[{}]'
+            ad.datadoghq.com/cmc-cluster-kafka-exporter.instances: |
+              [
+                {
+                  "prometheus_url": "http://%%host%%:%%port%%/metrics",
+                  "namespace": "cmc-kafka",
+                  "metrics": ["go_gc_duration_seconds","go_goroutines","go_memstats_alloc_bytes","go_memstats_alloc_bytes_total","go_memstats_buck_hash_sys_bytes","go_memstats_frees_total","go_memstats_gc_sys_bytes","go_memstats_heap_alloc_bytes","go_memstats_heap_idle_bytes","go_memstats_heap_inuse_bytes","go_memstats_heap_objects","go_memstats_heap_released_bytes_total","go_memstats_heap_sys_bytes","go_memstats_last_gc_time_seconds","go_memstats_lookups_total","go_memstats_mallocs_total","go_memstats_mcache_inuse_bytes","go_memstats_mcache_sys_bytes","go_memstats_mspan_inuse_bytes","go_memstats_mspan_sys_bytes","go_memstats_next_gc_bytes","go_memstats_other_sys_bytes","go_memstats_stack_inuse_bytes","go_memstats_stack_sys_bytes","go_memstats_sys_bytes","kafka_brokers","kafka_consumergroup_current_offset","kafka_consumergroup_lag","kafka_exporter_build_info","kafka_topic_partition_current_offset","kafka_topic_partition_in_sync_replica","kafka_topic_partition_leader","kafka_topic_partition_leader_is_preferred","kafka_topic_partition_oldest_offset","kafka_topic_partition_replicas","kafka_topic_partition_under_replicated_partition","kafka_topic_partitions","process_cpu_seconds_total","process_max_fds","process_open_fds","process_resident_memory_bytes","process_start_time_seconds","process_virtual_memory_bytes"]
+                }
+              ]

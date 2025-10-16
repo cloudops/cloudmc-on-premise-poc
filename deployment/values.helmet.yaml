@@ -1,0 +1,29 @@
+annotations:
+  # set new date to force pod refresh on chart update
+  updateDate: '2021-10-06'
+private: true
+certManager:
+  acmeEmail: cloudmc@cloudops.com
+replicaCount: 1
+registry:
+  username: <user>
+  password: <password>
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 9000
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: failure-domain.beta.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+resources:
+  requests:
+    cpu: 250m
+    memory: 250Mi
+  limits:
+    cpu: 300m
+    memory: 500Mi
+
+snapscheduler:
+  install: true
