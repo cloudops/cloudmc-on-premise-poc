@@ -1,6 +1,9 @@
 SAMPLE CLOUDMC TERRAFORM
 ================
 
+## Suggested implementation
+![Suggested design](OnPremDesign.drawio.png )
+
 ## Configure a Project in CloudStack
 
 Do the following in the CloudStack Management Server to get setup.
